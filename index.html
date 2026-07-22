@@ -1,0 +1,283 @@
+<!DOCTYPE html><html lang="zh"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>MC 建筑转换器 v4.8 (Pyodide)</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0d0d2b;min-height:100vh;font-family:"Segoe UI","Microsoft YaHei",sans-serif;padding:20px;color:#ccc}
+.container{max-width:960px;margin:0 auto}
+.wm{position:fixed;top:0;left:0;width:100vw;height:100vh;pointer-events:none;z-index:999;opacity:.06}
+.header{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px}
+.header h1{font-size:24px;color:#fff}
+.header h1 span{background:linear-gradient(135deg,#7c4dff,#448aff);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.header .sub{font-size:13px;color:#889}.header .badge{display:inline-block;padding:2px 10px;border-radius:10px;font-size:11px;background:rgba(124,77,255,.2);color:#b197fc;margin-left:6px}
+#status{background:rgba(255,255,255,.03);border-left:3px solid #7c4dff;border-radius:6px;padding:10px 16px;margin-bottom:10px;font-size:13px}
+.card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:14px;margin-bottom:10px}
+.drop-zone{border:2px dashed rgba(255,255,255,.1);border-radius:8px;padding:24px 20px;text-align:center;cursor:pointer;transition:.3s}
+.drop-zone:hover{border-color:rgba(124,77,255,.4);background:rgba(124,77,255,.05)}
+.drop-zone.drag-over{border-color:#7c4dff;background:rgba(124,77,255,.12)}
+.drop-zone.has-file{border-color:#ffd43b;background:rgba(255,212,59,.06)}
+.drop-zone .file-name{color:#ffd43b;font-weight:500;margin-top:4px;font-size:14px}
+.drop-zone .file-size{font-size:11px;color:#666}
+.drop-zone input[type=file]{display:none}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px}
+.row label{font-size:12px;color:#999}
+.row input[type=text],.row input[type=number]{padding:4px 8px;border:1px solid rgba(255,255,255,.1);border-radius:4px;background:rgba(0,0,0,.3);color:#ccc;font-size:12px;width:60px}
+.row select{padding:4px 6px;border:1px solid rgba(255,255,255,.1);border-radius:4px;background:rgba(0,0,0,.3);color:#ccc;font-size:12px}
+.btn{padding:8px 20px;border:none;border-radius:6px;font-size:13px;cursor:pointer;color:#fff;display:inline-flex;align-items:center;gap:6px;transition:.15s;font-weight:500}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.btn-primary{background:linear-gradient(135deg,#7c4dff,#5e35e0)}
+.btn-primary:hover:not(:disabled){opacity:.85;transform:scale(1.02)}
+.btn-success{background:linear-gradient(135deg,#00c853,#00a844)}
+.btn-success:hover:not(:disabled){opacity:.85;transform:scale(1.02)}
+.btn-preview{background:linear-gradient(135deg,#00b894,#00a381)}
+.btn-preview:hover:not(:disabled){opacity:.85;transform:scale(1.02)}
+.btn-danger{background:linear-gradient(135deg,#ff1744,#d50000)}
+.btn-danger:hover:not(:disabled){opacity:.85;transform:scale(1.02)}
+.btn-sm{padding:4px 12px;font-size:12px}
+.tabs{display:flex;border-bottom:1px solid rgba(255,255,255,.06);margin-top:6px}
+.tab{padding:6px 16px;cursor:pointer;font-size:12px;color:#666;border-bottom:2px solid transparent;transition:.2s;display:flex;align-items:center;gap:4px}
+.tab:hover{color:#aaa}.tab.active{color:#ccc;border-bottom-color:#7c4dff}
+.tab-content{display:none;margin-top:6px}.tab-content.active{display:block}
+.box{background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:10px;font-family:Consolas,monospace;font-size:12px;color:#8b8baa;height:260px;overflow:auto;white-space:pre-wrap;word-break:break-all}
+.box-lg{height:380px}.box-sm{height:150px}
+.box-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.box-header span{font-size:11px;color:#666}
+.copy-btn{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);color:#aaa;padding:2px 12px;border-radius:4px;font-size:11px;cursor:pointer}
+.copy-btn:hover{background:rgba(255,255,255,.15);color:#fff}
+.sens-area{width:100%;height:160px;font-family:Consolas,monospace;font-size:12px;margin-top:8px;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.06);border-radius:6px;padding:8px;color:#ccc;resize:vertical}
+.sens-area:focus{outline:none;border-color:#7c4dff}
+#loadingOverlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(13,13,43,.92);z-index:9999;align-items:center;justify-content:center;flex-direction:column;gap:16px}
+#loadingOverlay.active{display:flex}
+#loadingOverlay .spinner{width:40px;height:40px;border:3px solid rgba(124,77,255,.2);border-top-color:#7c4dff;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#loadingOverlay .loading-text{color:#889;font-size:13px}
+#toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%) translateY(80px);padding:12px 28px;border-radius:10px;font-size:14px;font-weight:500;z-index:10000;opacity:0;transition:all .4s;pointer-events:none;background:rgba(0,0,0,.85);border:1px solid rgba(255,255,255,.1)}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#toast.success{border-color:#00c853;color:#69db7c}
+#toast.error{border-color:#ff1744;color:#ff6b6b}
+#toast.info{border-color:#448aff;color:#74c0fc}
+@media(max-width:600px){.row{gap:4px}.btn{padding:6px 12px;font-size:11px}.header h1{font-size:18px}.box{height:180px}.box-lg{height:280px}}
+</style></head><body>
+
+<svg class="wm" xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">
+<defs><pattern id="wp" x="0" y="0" width="300" height="300" patternUnits="userSpaceOnUse">
+<text transform="rotate(-30)" x="0" y="150" font-size="26" font-family="Microsoft YaHei,SimHei,sans-serif" fill="#888">小逸罒不迷茫</text>
+</pattern></defs>
+<rect width="100%" height="100%" fill="url(#wp)"/>
+</svg>
+
+<div id="loadingOverlay"><div class="spinner"></div><div class="loading-text">加载 Pyodide...</div></div>
+<div id="toast"></div>
+
+<div class="container">
+<div class="header">
+<h1>MC <span>建筑转换器</span> v4.8</h1>
+<div class="sub">Pyodide (浏览器端) | 小逸罒不迷茫 <span class="badge">纯前端</span></div>
+</div>
+<div id="status"> 正在加载 Pyodide...</div>
+
+<div class="card">
+<div class="drop-zone" id="dropZone">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+<div><span id="dropText">点击选择 或 拖拽 .schematic / .litematic</span></div>
+<div id="fileInfo" style="display:none;margin-top:4px">
+<div class="file-name" id="fileNameDisplay"></div>
+<div class="file-size" id="fileSizeDisplay"></div>
+</div>
+<input type="file" id="fileInput" accept=".schematic,.litematic">
+</div>
+
+<div class="row">
+<label>计分板:</label><input type="text" id="sbName" value="dr" style="width:50px">
+<label>速度:</label><input type="text" id="speed" value="1" style="width:40px">
+<label>模式:</label><select id="modeSelect" style="width:70px" onchange="toggleNameInput()">
+<option value="dual" selected>双盔甲</option><option value="single">单盔甲</option>
+</select>
+<label id="nameLabel" style="display:none">名字:</label><input type="text" id="armorstandName" value="a" style="width:60px;display:none">
+<span id="hTagGroup"><label>高度盔甲架:</label><input type="text" id="hTag" value="h" style="width:40px"></span>
+<span id="bTagGroup"><label>扫描盔甲架:</label><input type="text" id="bTag" value="b" style="width:40px"></span>
+<label>指令上限:</label><input type="text" id="maxChars" value="10000" style="width:60px">
+</div>
+
+<div class="row" style="margin-top:8px">
+<button class="btn btn-primary" onclick="convert()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> 转换</button>
+<button class="btn btn-preview" id="previewBtn" onclick="preview()" disabled><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> 预览</button>
+<button class="btn btn-danger btn-sm" onclick="clearAll()" style="margin-left:auto"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg> 清空</button>
+<span style="font-size:11px;color:#555;margin-left:8px" id="infoText"></span>
+</div>
+<div id="dlArea" style="display:none;margin-top:8px">
+<a class="btn btn-success btn-sm" id="dlLink" style="text-decoration:none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> 下载指令文件</a>
+</div>
+</div>
+
+<div class="tabs">
+<div class="tab active" onclick="switchTab('log')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg> 日志</div>
+<div class="tab" onclick="switchTab('cmd')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> 指令</div>
+<div class="tab" onclick="switchTab('sens')">敏感词</div>
+<div class="tab" style="margin-left:auto"><a href="https://space.bilibili.com/3546638146603426" target="_blank" style="color:#fb7299;text-decoration:none;display:flex;align-items:center;gap:4px">B站</a></div>
+</div>
+
+<div class="tab-content active" id="logContent"><div class="box box-sm" id="log"></div></div>
+<div class="tab-content" id="cmdContent">
+<div class="box-header"><span>共 <span id="cmdCount">0</span> 条指令</span><button class="copy-btn" onclick="copyCommands()">复制</button></div>
+<div class="box box-lg" id="cmdLog">等待转换...</div>
+</div>
+<div class="tab-content" id="sensContent">
+<div class="card">
+<div style="font-size:12px;color:#999;margin-bottom:6px">你的词表: 每行一词, !开头=白名单豁免, #开头=注释(保存在浏览器)</div>
+<div class="row" style="margin-top:4px">
+<button class="btn btn-primary btn-sm" onclick="saveSensitive()">保存</button>
+<button class="btn btn-preview btn-sm" onclick="loadSensitive()">刷新</button>
+<span id="rmMsg" style="margin-left:12px;font-size:13px;color:#69db7c"></span>
+</div>
+<textarea class="sens-area" id="sensArea" placeholder="输入自定义敏感词，每行一个..."></textarea>
+</div>
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js"></script>
+<script>
+var lg=document.getElementById('log'),fi=document.getElementById('fileInput');
+
+function log(m){lg.textContent+=m+'\n';lg.scrollTop=lg.scrollHeight}
+function st(t){document.getElementById('status').textContent=t}
+function sw(n){document.querySelectorAll('.tab,.tab-content').forEach(function(e){e.classList.remove('active')});document.getElementById(n+'Content').classList.add('active');document.querySelector('.tab[onclick*="'+n+'"]').classList.add('active')}
+function sl(t){document.querySelector('#loadingOverlay .loading-text').textContent=t||'处理中...';document.getElementById('loadingOverlay').classList.add('active')}
+function hl(){document.getElementById('loadingOverlay').classList.remove('active')}
+function fs(s){if(s<1024)return s+'B';if(s<1048576)return(s/1024).toFixed(1)+'KB';return(s/1048576).toFixed(1)+'MB'}
+function sn(n){return n.replace(/[^a-zA-Z0-9.\-_]/g,'_')}
+
+function hf(f){
+if(!f)return;var x=f.name.split('.').pop().toLowerCase();
+if(x!=='schematic'&&x!=='litematic'){log('不支持: '+x);return}
+document.getElementById('dropZone').classList.add('has-file');
+document.getElementById('fileInfo').style.display='block';
+document.getElementById('fileNameDisplay').textContent=f.name;
+document.getElementById('fileSizeDisplay').textContent=fs(f.size);
+document.getElementById('dropText').textContent='文件已选择，点击更换';
+document.getElementById('previewBtn').disabled=false;log('加载: '+f.name);
+}
+fi.addEventListener('change',function(){if(this.files.length>0)hf(this.files[0])});
+document.getElementById('dropZone').addEventListener('click',function(){fi.click()});
+document.getElementById('dropZone').addEventListener('dragover',function(e){e.preventDefault();this.classList.add('drag-over')});
+document.getElementById('dropZone').addEventListener('dragleave',function(){this.classList.remove('drag-over')});
+document.getElementById('dropZone').addEventListener('drop',function(e){e.preventDefault();this.classList.remove('drag-over');if(e.dataTransfer.files.length>0){fi.files=e.dataTransfer.files;hf(e.dataTransfer.files[0])}});
+
+function tni(){
+var m=document.getElementById('modeSelect').value,s=m==='single';
+document.getElementById('nameLabel').style.display=s?'':'none';
+document.getElementById('armorstandName').style.display=s?'':'none';
+document.getElementById('hTagGroup').style.display=s?'none':'';
+document.getElementById('bTagGroup').style.display=s?'none':'';
+}
+function ca(){
+fi.value='';document.getElementById('dropZone').classList.remove('has-file');
+document.getElementById('fileInfo').style.display='none';
+document.getElementById('dropText').textContent='点击选择 或 拖拽 .schematic / .litematic';
+document.getElementById('previewBtn').disabled=true;
+document.getElementById('dlArea').style.display='none';
+document.getElementById('cmdLog').textContent='等待转换...';
+document.getElementById('cmdCount').textContent='0';
+document.getElementById('infoText').textContent='';log('已清空');
+}
+function cc(){
+var t=document.getElementById('cmdLog').textContent;
+if(!t||t==='等待转换...')return;
+navigator.clipboard.writeText(t).then(function(){stt('已复制','success')}).catch(function(){
+var ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();stt('已复制','success')});
+}
+function stt(m,t){
+var e=document.getElementById('toast');e.textContent=m;e.className='toast '+(t||'info')+' show';
+clearTimeout(window._tt);window._tt=setTimeout(function(){e.classList.remove('show')},3000);
+}
+function ls(){document.getElementById('sensArea').value=localStorage.getItem('mc_sens')||'';document.getElementById('rmMsg').textContent='已加载'}
+function ss(){localStorage.setItem('mc_sens',document.getElementById('sensArea').value);document.getElementById('rmMsg').textContent='已保存'}
+
+// ===== Pyodide =====
+var py=null,pr=false;
+async function init(){
+sl('正在加载 Pyodide...');
+log('Pyodide 加载中...');
+try{
+py=await loadPyodide({indexURL:'https://cdn.jsdelivr.net/pyodide/v0.25.1/full/'});
+log('Pyodide '+py.version+' 加载完成');
+
+// 把 .py 写入虚拟 FS CWD，再 import（比 exec 字符串嵌入更可靠）
+py.FS.writeFile('sensitive_filter.py', await(await fetch('py/sensitive_filter.py')).text());
+py.FS.writeFile('converter.py', await(await fetch('py/converter.py')).text());
+py.runPython('import sys; sys.path.insert(0, "/home/pyodide"); import sensitive_filter; from sensitive_filter import SensitiveFilter');
+py.runPython('import converter');
+log('Python 模块已加载');
+
+// 注册 web_convert / web_preview
+py.runPython(`
+import json,io,sys,traceback
+from pathlib import Path
+def web_convert(fn):
+b=io.StringIO();o=sys.stdout;sys.stdout=b
+try:
+bl,w,h,l=parse_building('/tmp/'+fn)
+if not bl:return json.dumps({'error':'未找到方块'})
+cp=compress_blocks(bl,w,l)
+cm=generate_commands_typed(cp,Path(fn).stem,w,l,use_unless=True,scoreboard_name='dr',speed=1,h_tag='h',b_tag='b',max_chars=10000)
+return json.dumps({'commands':'\\n'.join(cm),'log':b.getvalue(),'blocks':len(bl),'compressed':len(cp),'total_cmds':len(cm),'width':w,'height':h,'length':l})
+except Exception as e:return json.dumps({'error':str(e),'trace':traceback.format_exc()})
+finally:sys.stdout=o
+def web_preview(fn):
+b=io.StringIO();o=sys.stdout;sys.stdout=b
+try:
+bl,w,h,l=parse_building('/tmp/'+fn)
+return json.dumps({'log':b.getvalue(),'blocks':len(bl)if bl else 0,'width':w,'height':h,'length':l})
+except Exception as e:return json.dumps({'error':str(e),'trace':traceback.format_exc()})
+finally:sys.stdout=o
+`);
+
+pr=true;log('Python 内核已就绪');
+hl();st('就绪 (Pyodide)');
+}catch(e){
+log('Pyodide 初始化失败: '+(e.message||e));
+if(e.stack)log(e.stack);
+st('加载失败');hl();
+}
+}
+init();
+
+async function convert(){
+if(!pr){log('Python 内核尚未就绪，请稍候...');return}
+var f=fi.files[0];if(!f)return;
+sl('转换 '+f.name+'...');
+log('文件: '+f.name+' ('+(f.size/1024).toFixed(1)+' KB)');st('转换中...');
+try{
+var nm=sn(f.name);
+py.FS.writeFile('/tmp/'+nm,new Uint8Array(await f.arrayBuffer()));
+var r=JSON.parse(py.pyimport('web_convert')(nm));
+if(r.error){log('错误: '+r.error);if(r.trace)log(r.trace);st('转换失败');hl();return}
+if(r.log)log(r.log);
+document.getElementById('cmdLog').textContent=r.commands;
+document.getElementById('cmdCount').textContent=r.total_cmds;
+var a=document.getElementById('dlLink');
+a.href=URL.createObjectURL(new Blob([r.commands],{type:'text/plain;charset=utf-8'}));
+a.download=f.name.replace(/\.[^.]+$/,'')+'_commands.txt';
+document.getElementById('dlArea').style.display='block';
+log('指令数: '+r.total_cmds+' 条');
+sw('cmd');st('完成! '+r.total_cmds+' 条指令');
+document.getElementById('infoText').textContent='方块:'+r.blocks+' 压缩:'+r.compressed;
+}catch(e){log('出错: '+(e.message||e));if(e.stack)log(e.stack);st('失败')}
+hl();
+}
+
+async function preview(){
+if(!pr){log('Python 内核尚未就绪，请稍候...');return}
+var f=fi.files[0];if(!f)return;
+sl('解析 '+f.name+'...');st('解析中...');
+try{
+var nm=sn(f.name);
+py.FS.writeFile('/tmp/'+nm,new Uint8Array(await f.arrayBuffer()));
+var r=JSON.parse(py.pyimport('web_preview')(nm));
+if(r.error){log('错误: '+r.error);st('解析失败')}
+else{log('方块: '+r.blocks+' 个 | 尺寸: '+r.width+'x'+r.height+'x'+r.length);st('预览完成')}
+}catch(e){log('出错: '+(e.message||e));st('失败')}
+hl();
+}
+</script>
+</body></html>
