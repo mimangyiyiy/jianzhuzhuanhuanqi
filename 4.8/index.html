@@ -1,0 +1,208 @@
+<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><title>MC 建筑转换器 v4.8 (Pyodide)</title><style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:linear-gradient(135deg,#0d0d2b,#1a1a3e,#0f0f2e);min-height:100vh;font-family:"Segoe UI","Microsoft YaHei",sans-serif;padding:20px}
+.container{max-width:900px;margin:0 auto}
+h1{font-size:24px;color:#fff;margin-bottom:4px}
+h1 span{background:linear-gradient(135deg,#7c4dff,#448aff);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.sub{color:#889;font-size:13px;margin-bottom:10px}
+.card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:14px;margin-bottom:10px}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+label{font-size:12px;color:#999}
+input[type=file]{font-size:12px;color:#ccc;background:transparent;border:none}
+.btn{padding:6px 16px;border:none;border-radius:5px;font-size:12px;cursor:pointer;color:#fff;display:inline-block;text-decoration:none}
+.btn-primary{background:linear-gradient(135deg,#7c4dff,#5e35e0);transition:.1s}
+.btn-primary:hover{opacity:.85}
+.btn:disabled{opacity:.35;cursor:default}
+#st{font-size:12px;color:#889;padding:8px 14px;border-radius:6px;margin-bottom:8px;background:rgba(255,255,255,.03)}
+#ld{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(13,13,43,.92);z-index:9999;align-items:center;justify-content:center;flex-direction:column;gap:16px}
+#ld.s{display:flex}
+#sp{width:40px;height:40px;border:3px solid rgba(124,77,255,.2);border-top-color:#7c4dff;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#lt{color:#889;font-size:13px}
+.tabs{display:flex;border-bottom:1px solid rgba(255,255,255,.06);margin-top:8px}
+.tab{padding:5px 14px;cursor:pointer;font-size:12px;color:#666;border-bottom:2px solid transparent}
+.tab.a{color:#ccc;border-bottom-color:#7c4dff}
+.tab-c{display:none;margin-top:6px}
+.tab-c.s{display:block}
+.box{background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:10px;font-family:Consolas,monospace;font-size:11px;color:#8b8baa;height:260px;overflow:auto;white-space:pre-wrap}
+</style></head><body>
+<div id="ld"><div id="sp"></div><div id="lt">加载 Pyodide...</div></div>
+<div class="container">
+<h1>MC <span>建筑转换器</span> v4.8</h1>
+<div class="sub">Python 内核 (Pyodide) | 作者: 小逸罒不迷茫</div>
+<div id="st">启动中...</div>
+<div class="card"><div class="row">
+<label>文件:</label><input type="file" id="fi" accept=".schematic,.litematic">
+<button class="btn btn-primary" id="pb" onclick="preview()" disabled>预览</button>
+<button class="btn btn-primary" id="cb" onclick="convert()" disabled>转换</button>
+</div></div>
+<div class="tabs"><div class="tab a" onclick="sw('lg')">日志</div><div class="tab" onclick="sw('cm')">指令</div></div>
+<div class="tab-c s" id="lgC"><div class="box" id="lg" style="height:180px"></div></div>
+<div class="tab-c" id="cmC"><div class="box" id="cm" style="height:300px"></div><div id="dl" style="display:none;margin-top:6px"><a class="btn btn-primary" id="dlk" download>下载指令文件</a></div></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js"></script>
+<script>
+var lg=document.getElementById('lg'),fi=document.getElementById('fi');
+function log(m){lg.textContent+=m+'\n';lg.scrollTop=lg.scrollHeight}
+function st(t,c){var e=document.getElementById('st');e.textContent=t;e.className=c||''}
+function sw(n){document.querySelectorAll('.tab,.tab-c').forEach(function(e){e.classList.remove('a','s')});
+  document.getElementById(n+'C').classList.add('s');document.querySelector('.tab[onclick*="'+n+'"]').classList.add('a')}
+function sl(t){document.getElementById('lt').textContent=t;document.getElementById('ld').className='s'}
+function hl(){document.getElementById('ld').className=''}
+fi.onchange=function(){var ok=fi.files.length>0;['pb','cb'].forEach(function(i){document.getElementById(i).disabled=!ok})};
+
+// 安全文件名（只保留字母数字.-_）
+function safeName(n){return n.replace(/[^a-zA-Z0-9.\-_]/g,'_')}
+
+// ===== Pyodide 初始化 =====
+var pyodide = null, pyReady = false;
+
+async function initPyodide() {
+  sl('正在加载 Pyodide (Python 运行时)...');
+  log('Pyodide 加载中...');
+  try {
+    pyodide = await loadPyodide({
+      indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.25.1/full/'
+    });
+    log('Pyodide ' + pyodide.version + ' 加载完成');
+
+    // 加载 Python 源代码
+    var pyFiles = [
+      {url: 'py/sensitive_filter.py', name: '敏感词过滤'},
+      {url: 'py/converter.py', name: '核心转换'}
+    ];
+    for (var i = 0; i < pyFiles.length; i++) {
+      var resp = await fetch(pyFiles[i].url);
+      if (!resp.ok) throw new Error('无法加载 ' + pyFiles[i].url + ' (HTTP ' + resp.status + ')');
+      pyodide.runPython(await resp.text());
+      log(pyFiles[i].name + ' 已加载');
+    }
+
+    // 注册 web_convert 函数——文件由 JS 写入 /tmp/，Python 读取
+    pyodide.runPython(`
+import json, io, sys, traceback
+from pathlib import Path
+
+def web_convert(file_name):
+    """读取 /tmp/{file_name} 并转换。输入已在 JS 端写入虚拟 FS。"""
+    log_buf = io.StringIO()
+    old_stdout = sys.stdout
+    sys.stdout = log_buf
+    try:
+        input_path = '/tmp/' + file_name
+        blocks, width, height, length = parse_building(input_path)
+        print(f'解析完成: {len(blocks)} 个方块, {width}x{height}x{length}')
+        if not blocks:
+            return json.dumps({'error': '未找到方块'})
+        compressed = compress_blocks(blocks, width, length)
+        print(f'压缩后: {len(compressed)} 个 Fill 条目')
+        cmds = generate_commands_typed(
+            compressed, Path(file_name).stem, width, length,
+            use_unless=True, scoreboard_name='dr', speed=1,
+            h_tag='h', b_tag='b', max_chars=10000)
+        print(f'指令: {len(cmds)} 条')
+        return json.dumps({
+            'commands': '\\n'.join(cmds),
+            'log': log_buf.getvalue(),
+            'blocks': len(blocks),
+            'compressed': len(compressed),
+            'total_cmds': len(cmds),
+            'width': width, 'height': height, 'length': length})
+    except Exception as e:
+        return json.dumps({'error': str(e), 'trace': traceback.format_exc()})
+    finally:
+        sys.stdout = old_stdout
+
+def web_preview(file_name):
+    """只读取元数据，不生成指令。"""
+    import json, io, sys, traceback
+    log_buf = io.StringIO()
+    old_stdout = sys.stdout
+    sys.stdout = log_buf
+    try:
+        input_path = '/tmp/' + file_name
+        blocks, width, height, length = parse_building(input_path)
+        return json.dumps({
+            'log': log_buf.getvalue(),
+            'blocks': len(blocks) if blocks else 0,
+            'width': width, 'height': height, 'length': length})
+    except Exception as e:
+        return json.dumps({'error': str(e), 'trace': traceback.format_exc()})
+    finally:
+        sys.stdout = old_stdout
+`);
+
+    pyReady = true;
+    log('Python 内核已就绪');
+    st('就绪 (Pyodide)');
+    hl();
+  } catch (e) {
+    log('Pyodide 初始化失败: ' + (e.message || e));
+    st('Pyodide 加载失败', 'error');
+    hl();
+  }
+}
+
+initPyodide();
+
+// ===== 工具函数：调用 Python 函数 =====
+function pyCall(fn, arg) {
+  return JSON.parse(pyodide.pyimport(fn)(arg));
+}
+
+// ===== 转换 =====
+async function convert() {
+  if (!pyReady) { log('Python 内核尚未就绪，请稍候...'); return; }
+  var f = fi.files[0]; if (!f) return;
+  sl('转换 ' + f.name + '...');
+  log('文件: ' + f.name + ' (' + (f.size/1024).toFixed(1) + ' KB)');
+  st('转换中...');
+  try {
+    var buf = await f.arrayBuffer();
+    var sname = safeName(f.name);
+    pyodide.FS.writeFile('/tmp/' + sname, new Uint8Array(buf));
+    var r = pyCall('web_convert', sname);
+    if (r.error) {
+      log('错误: ' + r.error); if (r.trace) log(r.trace);
+      st('转换失败', 'error'); hl(); return;
+    }
+    if (r.log) log(r.log);
+    var cmEl = document.getElementById('cm');
+    cmEl.textContent = r.commands;
+    var a = document.getElementById('dlk');
+    a.href = URL.createObjectURL(new Blob([r.commands], {type:'text/plain;charset=utf-8'}));
+    a.download = f.name.replace(/\.[^.]+$/, '') + '_commands.txt';
+    document.getElementById('dl').style.display = 'block';
+    log('指令数: ' + r.total_cmds + ' 条');
+    sw('cm');
+    st('完成! ' + r.total_cmds + ' 条指令');
+  } catch (e) {
+    log('出错: ' + (e.message || e));
+    if (e.stack) log(e.stack);
+    st('失败', 'error');
+  }
+  hl();
+}
+
+async function preview() {
+  if (!pyReady) { log('Python 内核尚未就绪，请稍候...'); return; }
+  var f = fi.files[0]; if (!f) return;
+  sl('解析 ' + f.name + '...'); st('解析中...');
+  try {
+    var buf = await f.arrayBuffer();
+    var sname = safeName(f.name);
+    pyodide.FS.writeFile('/tmp/' + sname, new Uint8Array(buf));
+    var r = pyCall('web_preview', sname);
+    if (r.error) {
+      log('错误: ' + r.error); st('解析失败', 'error');
+    } else {
+      log('方块: ' + r.blocks + ' 个 | 尺寸: ' + r.width + 'x' + r.height + 'x' + r.length);
+      st('预览完成');
+    }
+  } catch (e) {
+    log('出错: ' + (e.message || e)); st('失败', 'error');
+  }
+  hl();
+}
+</script></body></html>
